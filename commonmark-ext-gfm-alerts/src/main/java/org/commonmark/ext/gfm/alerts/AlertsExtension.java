@@ -6,6 +6,8 @@ import org.commonmark.ext.gfm.alerts.internal.AlertHtmlNodeRenderer;
 import org.commonmark.ext.gfm.alerts.internal.AlertMarkdownNodeRenderer;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.NodeRenderer;
+import org.commonmark.renderer.html.HtmlNodeRendererContext;
+import org.commonmark.renderer.html.HtmlNodeRendererFactory;
 import org.commonmark.renderer.html.HtmlRenderer;
 import org.commonmark.renderer.markdown.MarkdownNodeRendererContext;
 import org.commonmark.renderer.markdown.MarkdownNodeRendererFactory;
@@ -49,14 +51,28 @@ import java.util.Set;
 public class AlertsExtension implements Parser.ParserExtension, HtmlRenderer.HtmlRendererExtension,
         MarkdownRenderer.MarkdownRendererExtension {
 
-    static final Set<String> STANDARD_TYPES = Set.of("NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION");
+    /**
+     * The standard GitHub Flavored Markdown (GFM) types that the extension
+     * enables by default. They can be removed individually with
+     * {@link Builder#removeType(String)}.
+     */
+    public static final Map<String, String> STANDARD_TYPES = Map.ofEntries(
+        Map.entry("NOTE", "Note"),
+        Map.entry("TIP", "Tip"),
+        Map.entry("IMPORTANT", "Important"),
+        Map.entry("WARNING", "Warning"),
+        Map.entry("CAUTION", "Caution")
+    );
 
-    private final Map<String, String> customTypes;
+    /**
+     * A map of alert marker ({@code [!TYPE]}) to the default title for that marker.
+     */
+    private final Map<String, String> allowedTypes;
     private final boolean customTitlesAllowed;
     private final boolean nestedAlertsAllowed;
 
     private AlertsExtension(Builder builder) {
-        this.customTypes = new HashMap<>(builder.customTypes);
+        this.allowedTypes = new HashMap<>(builder.allowedTypes);
         this.customTitlesAllowed = builder.customTitlesAllowed;
         this.nestedAlertsAllowed = builder.nestedAlertsAllowed;
     }
@@ -71,15 +87,19 @@ public class AlertsExtension implements Parser.ParserExtension, HtmlRenderer.Htm
 
     @Override
     public void extend(Parser.Builder parserBuilder) {
-        var allowedTypes = new HashSet<>(STANDARD_TYPES);
-        allowedTypes.addAll(customTypes.keySet());
+        var allowedTypesSet = new HashSet<>(allowedTypes.keySet());
         parserBuilder.customBlockParserFactory(
-            new AlertBlockParser.Factory(allowedTypes, customTitlesAllowed, nestedAlertsAllowed));
+            new AlertBlockParser.Factory(allowedTypesSet, customTitlesAllowed, nestedAlertsAllowed));
     }
 
     @Override
     public void extend(HtmlRenderer.Builder rendererBuilder) {
-        rendererBuilder.nodeRendererFactory(context -> new AlertHtmlNodeRenderer(context, customTypes));
+        rendererBuilder.nodeRendererFactory(new HtmlNodeRendererFactory() {
+            @Override
+            public NodeRenderer create(HtmlNodeRendererContext context) {
+                return new AlertHtmlNodeRenderer(context, allowedTypes);
+            }
+        });
     }
 
     @Override
@@ -101,18 +121,18 @@ public class AlertsExtension implements Parser.ParserExtension, HtmlRenderer.Htm
      * Builder for configuring the alerts extension.
      */
     public static class Builder {
-        private final Map<String, String> customTypes = new HashMap<>();
+        private final Map<String, String> allowedTypes = new HashMap<>(STANDARD_TYPES);
         private boolean customTitlesAllowed = false;
         private boolean nestedAlertsAllowed = false;
 
         /**
-         * Adds a custom alert type with a display title.
+         * Adds a custom alert type with a default title.
          * <p>
-         * This can also be used to override the display title of standard GFM types
+         * This can also be used to override the default title of standard GFM types
          * (e.g., for localization).
          *
          * @param type the alert type (must be uppercase)
-         * @param title the display title for this alert type
+         * @param title the default title for this alert type
          * @return {@code this}
          */
         public Builder addCustomType(String type, String title) {
@@ -125,7 +145,24 @@ public class AlertsExtension implements Parser.ParserExtension, HtmlRenderer.Htm
             if (!type.equals(type.toUpperCase(Locale.ROOT))) {
                 throw new IllegalArgumentException("Type must be uppercase: " + type);
             }
-            customTypes.put(type, title);
+            allowedTypes.put(type, title);
+            return this;
+        }
+
+        /**
+         * Removes an alert type.
+         *
+         * @param type the alert type to remove (must be uppercase)
+         * @return {@code this}
+         */
+        public Builder removeType(String type) {
+            if (type == null || type.isEmpty()) {
+                throw new IllegalArgumentException("Type must not be null or empty");
+            }
+            if (!type.equals(type.toUpperCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("Type must be uppercase: " + type);
+            }
+            allowedTypes.remove(type);
             return this;
         }
 

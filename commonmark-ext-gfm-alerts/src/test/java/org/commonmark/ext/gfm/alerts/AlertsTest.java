@@ -137,6 +137,19 @@ public class AlertsTest extends RenderingTestCase {
                 AlertsExtension.builder().addCustomType("INFO", "").build());
     }
 
+    @Test
+    public void removeStandardType() {
+        Extension extension = AlertsExtension.builder().removeType("NOTE").build();
+        Parser parser = Parser.builder().extensions(Set.of(extension)).build();
+        HtmlRenderer renderer = HtmlRenderer.builder().extensions(Set.of(extension)).build();
+
+        assertThat(renderer.render(parser.parse("> [!NOTE]\n> Regular block quote"))).isEqualTo(
+                "<blockquote>\n" +
+                "<p>[!NOTE]\n" +
+                "Regular block quote</p>\n" +
+                "</blockquote>\n");
+    }
+
     // Custom titles
 
     @Test
